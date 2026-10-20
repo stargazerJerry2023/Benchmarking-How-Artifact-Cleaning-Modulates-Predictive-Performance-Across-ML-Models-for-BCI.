@@ -3,6 +3,14 @@ from mne.datasets import eegbci
 from mne.io import read_raw_edf
 import matplotlib.pyplot as plt
 
+"""
+
+This file demonstrates our baseline data ingestion. 
+It extracts a specific run from the PhysioNet database to show raw EEG brain activity during hand movement tasks, 
+plotting the waveform traces across our target motor channels
+
+"""
+
 print("Downloads/Loading PhysioNet Data (Subject 1, Run 3)")
 subject = 1
 runs = [3]  
