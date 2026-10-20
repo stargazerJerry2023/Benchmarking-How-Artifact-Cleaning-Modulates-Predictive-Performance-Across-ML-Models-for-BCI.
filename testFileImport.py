@@ -3,7 +3,7 @@ from mne.datasets import eegbci
 from mne.io import read_raw_edf
 import matplotlib.pyplot as plt
 
-print("Downloads/Loading PhysioNet Data (Subject 1, Run 3) ---")
+print("Downloads/Loading PhysioNet Data (Subject 1, Run 3)")
 subject = 1
 runs = [3]  
 raw_fnames = eegbci.load_data(subject, runs)
