@@ -25,6 +25,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.covariance import oas
 from sklearn.model_selection import RepeatedStratifiedKFold
 import numpy as np
+import json
 
 
 from testPhysioNetPrep import apply_butterworth_bandpass, SFREQ, EXCLUDE
@@ -243,10 +244,13 @@ def score_subject(Xi, yi, Xe, ye):
     return out
 
 
+
+
+
 if __name__ == "__main__":
     # Exclude unwanted subjects and load data in parallel across CPU cores
     subs = [s for s in SUBJECTS if s not in EXCLUDE]
-    print("--- Loading subjects (Euclidean-aligned 8-30Hz imagery + execution runs) ---")
+    print("Loading subjects (Euclidean-aligned 8-30Hz imagery + execution runs)")
     loaded = Parallel(n_jobs=-1)(delayed(load_subject)(s) for s in subs)
     data = [r for r in loaded if r is not None]
     print(f"Loaded {len(data)}/{len(subs)} subjects")
@@ -254,16 +258,38 @@ if __name__ == "__main__":
     print("--- Scoring models per subject ---")
     results = Parallel(n_jobs=-1)(delayed(score_subject)(*d) for d in data)
 
+    results_summary = {}
+
     # Aggregate and print detailed performance metrics across all subjects
     for name in results[0]:
         sc = np.array([r[name] for r in results])
-        resp = sc[sc >= 0.70] # Filter for clinically viable / responsive subjects (>= 70% accuracy)
-        resp_mean = f"{resp.mean() * 100:.2f}%" if len(resp) > 0 else "N/A"
+        sc_pct = sc * 100  
+        
+        resp = sc_pct[sc_pct >= 70.0] # Filter for clinically viable / responsive subjects (>= 70% accuracy)
+        resp_mean = float(resp.mean()) if len(resp) > 0 else 0.0
+
+        # Save metrics into the summary dictionary
+        results_summary[name] = {
+            "mean": float(sc_pct.mean()),
+            "std": float(sc_pct.std()),
+            "median": float(np.median(sc_pct)),
+            "above_70_count": int((sc_pct >= 70.0).sum()),
+            "above_80_count": int((sc_pct >= 80.0).sum()),
+            "total_subjects": int(len(sc_pct)),
+            "responsive_mean": resp_mean
+        }
+
+        resp_mean_str = f"{resp_mean:.2f}%" if len(resp) > 0 else "N/A"
         print(
-            f"[{name}] -> All Mean: {sc.mean() * 100:.2f}% (+/- {sc.std() * 100:.2f}%) "
-            f"| Median: {np.median(sc) * 100:.2f}% "
-            f"| >=70%: {(sc >= 0.70).sum()}/{len(sc)} (Responsive Mean: {resp_mean}) "
-            f"| >=80%: {(sc >= 0.80).sum()}/{len(sc)}"
+            f"[{name}] -> All Mean: {sc_pct.mean():.2f}% (+/- {sc_pct.std():.2f}%) "
+            f"| Median: {np.median(sc_pct):.2f}% "
+            f"| >=70%: {(sc_pct >= 70.0).sum()}/{len(sc_pct)} (Responsive Mean: {resp_mean_str}) "
+            f"| >=80%: {(sc_pct >= 80.0).sum()}/{len(sc_pct)}"
         )
+
+    # Dump the complete dictionary to a JSON file for plotting or reporting
+    with open("improved_pipeline_results.json", "w") as f:
+        json.dump(results_summary, f, indent=4)
+    print("\nSaved benchmark results to 'improved_pipeline_results.json'")
 
     print("\nBenchmark Complete")

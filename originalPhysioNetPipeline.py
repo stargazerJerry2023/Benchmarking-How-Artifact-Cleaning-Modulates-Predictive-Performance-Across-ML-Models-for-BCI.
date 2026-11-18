@@ -12,6 +12,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.model_selection import RepeatedStratifiedKFold
 import numpy as np
+import json
 
 # Import shared preprocessing components and configurations from preprocessing script
 from testPhysioNetPrep import FILTER_MODES, SFREQ, EXCLUDE
@@ -92,14 +93,14 @@ def score_subject_original(X, y):
 
 # Executes benchmarks and gives benchmark score
 
-
 if __name__ == "__main__":
     subs = [s for s in SUBJECTS if s not in EXCLUDE]
-    print("--- Running Original Pipeline (Per-Subject Evaluation) ---")
+    print("Running Original Pipeline (Per-Subject Evaluation)")
+
+    results_summary = {}  
 
     # Loop through each filtering state and run the full benchmarking pipeline
     for state_name, mode in STATES:
-        # Load all subjects in parallel using all available CPU cores
         loaded = Parallel(n_jobs=-1)(
             delayed(load_subject_original)(s, mode) for s in subs
         )
@@ -110,15 +111,35 @@ if __name__ == "__main__":
             Parallel(n_jobs=-1)(delayed(score_subject_original)(X, y) for X, y in data)
         )
 
+        # Convert scores to percentages for consistency
+        sc_pct = sc * 100
+
         # Calculate benchmarks across the subject population
-        resp = sc[sc >= 0.70] # Subjects achieving 70%+ accuracy
-        resp_mean = f"{resp.mean() * 100:.2f}%" if len(resp) > 0 else "N/A"
+        resp = sc_pct[sc_pct >= 70.0] 
+        resp_mean = float(resp.mean()) if len(resp) > 0 else 0.0
         
+
+        results_summary[state_name] = {
+            "mean": float(sc_pct.mean()),
+            "std": float(sc_pct.std()),
+            "median": float(np.median(sc_pct)),
+            "above_70_count": int((sc_pct >= 70.0).sum()),
+            "above_80_count": int((sc_pct >= 80.0).sum()),
+            "total_subjects": int(len(sc_pct)),
+            "responsive_mean": resp_mean
+        }
+
+        resp_mean_str = f"{resp_mean:.2f}%" if len(resp) > 0 else "N/A"
         print(
-            f"[{state_name}] -> All Mean: {sc.mean() * 100:.2f}% (+/- {sc.std() * 100:.2f}%) "
-            f"| Median: {np.median(sc) * 100:.2f}% "
-            f"| >=70%: {(sc >= 0.70).sum()}/{len(sc)} (Responsive Mean: {resp_mean}) "
-            f"| >=80%: {(sc >= 0.80).sum()}/{len(sc)}"
+            f"[{state_name}] -> All Mean: {sc_pct.mean():.2f}% (+/- {sc_pct.std():.2f}%) "
+            f"| Median: {np.median(sc_pct):.2f}% "
+            f"| >=70%: {(sc_pct >= 70.0).sum()}/{len(sc_pct)} (Responsive Mean: {resp_mean_str}) "
+            f"| >=80%: {(sc_pct >= 80.0).sum()}/{len(sc_pct)}"
         )
+
+    # Dump the dictionary to a JSON file at the end of the run
+    with open("original_pipeline_results.json", "w") as f:
+        json.dump(results_summary, f, indent=4)
+    print("\nSaved benchmark results to 'original_pipeline_results.json'")
 
     print("\nBenchmark Complete")
